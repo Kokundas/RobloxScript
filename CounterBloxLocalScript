@@ -1,0 +1,500 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local StarterGui = game:GetService("StarterGui")
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- Создаем ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "GameMenu"
+screenGui.Parent = LocalPlayer.PlayerGui
+screenGui.DisplayOrder = 1000
+screenGui.IgnoreGuiInset = true
+
+-- Создаем невидимый TextButton для разблокировки мыши
+local modalButton = Instance.new("TextButton")
+modalButton.BackgroundTransparency = 1
+modalButton.Size = UDim2.new(0, 0, 0, 0)
+modalButton.Modal = true
+modalButton.Parent = screenGui
+modalButton.Visible = false
+
+-- Создаем Frame для квадрата FOV аимбота
+local aimbotFOVSquare = Instance.new("Frame")
+aimbotFOVSquare.Name = "AimbotFOVSquare"
+aimbotFOVSquare.Size = UDim2.new(0, 100, 0, 100)
+aimbotFOVSquare.Position = UDim2.new(0.5, -50, 0.5, -50)
+aimbotFOVSquare.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+aimbotFOVSquare.BackgroundTransparency = 0.7
+aimbotFOVSquare.BorderSizePixel = 0
+local fovUICorner = Instance.new("UICorner")
+fovUICorner.CornerRadius = UDim.new(0, 8)
+fovUICorner.Parent = aimbotFOVSquare
+aimbotFOVSquare.Visible = false
+aimbotFOVSquare.Parent = screenGui
+
+-- Хранилище меток для ESP
+local espLabels = {}
+
+-- Создаем фрейм для меню
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 280, 0, 360)
+frame.Position = UDim2.new(0.5, -140, 0.5, -180)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+local frameUICorner = Instance.new("UICorner")
+frameUICorner.CornerRadius = UDim.new(0, 12)
+frameUICorner.Parent = frame
+local frameShadow = Instance.new("UIStroke")
+frameShadow.Thickness = 2
+frameShadow.Color = Color3.fromRGB(0, 0, 0)
+frameShadow.Transparency = 0.5
+frameShadow.Parent = frame
+frame.Parent = screenGui
+frame.Visible = false
+
+-- Добавляем заголовок меню
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -20, 0, 40)
+titleLabel.Position = UDim2.new(0, 10, 0, 10)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Game Menu"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 24
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = frame
+
+-- Функция для создания кнопки
+local function createButton(name, position, text, callback)
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.Size = UDim2.new(0, 260, 0, 50)
+	button.Position = position
+	button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.Text = text
+	button.TextSize = 18
+	button.Font = Enum.Font.Gotham
+	button.Parent = frame
+	local buttonUICorner = Instance.new("UICorner")
+	buttonUICorner.CornerRadius = UDim.new(0, 8)
+	buttonUICorner.Parent = button
+	local buttonShadow = Instance.new("UIStroke")
+	buttonShadow.Thickness = 1
+	buttonShadow.Color = Color3.fromRGB(0, 0, 0)
+	buttonShadow.Transparency = 0.3
+	buttonShadow.Parent = button
+
+	-- Hover эффект
+	button.MouseEnter:Connect(function()
+		button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	end)
+	button.MouseLeave:Connect(function()
+		button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	end)
+
+	button.MouseButton1Click:Connect(callback)
+	return button
+end
+
+-- Переменные для состояния функций и статичных биндов
+local espEnabled = true
+local bhopEnabled = false
+local aimbotEnabled = false
+local minFOV = 70
+local maxFOV = 160
+local defaultWalkSpeed = 16
+local bhopWalkSpeed = 32
+local defaultJumpHeight = 7.2
+local bhopJumpHeight = 2
+local lastJumpTime = 0
+local jumpCooldown = 0.2
+local aimbotFOV = 15
+local defaultESPFillColor = Color3.fromRGB(255, 255, 255)
+local defaultESPOutlineColor = Color3.fromRGB(150, 150, 150)
+local defaultESPTextColor = Color3.fromRGB(150, 150, 150)
+local espKey = "E"
+local bhopKey = "B"
+local aimbotKey = "V"
+local menuEnabled = false
+local mouseBehaviorHistory = UserInputService.MouseBehavior
+local isDraggingFrame = false
+local isDraggingSlider = false
+local lastMousePos = nil
+
+-- Функция для отправки локального сообщения в чат
+local function sendChatMessage(text, color)
+	StarterGui:SetCore("ChatMakeSystemMessage", {
+		Text = text,
+		Color = color,
+		Font = Enum.Font.GothamBold,
+		FontSize = Enum.FontSize.Size24
+	})
+end
+
+-- Функция для проверки видимости цели через стены
+local function isVisible(target)
+	if not target then return false end
+	local head = target:FindFirstChild("Head")
+	if not head then return false end
+	local rayOrigin = Camera.CFrame.Position
+	local rayDirection = (head.Position - rayOrigin).Unit * (head.Position - rayOrigin).Magnitude
+	local ray = Ray.new(rayOrigin, rayDirection)
+	local ignoreList = {LocalPlayer.Character}
+	local hit, _ = Workspace:FindPartOnRayWithIgnoreList(ray, ignoreList)
+	return hit == nil or hit:IsDescendantOf(target)
+end
+
+-- Функция для получения ближайшей цели в пределах FOV для аимбота
+local function getClosestTarget()
+	local closestTarget = nil
+	local closestAngle = aimbotFOV
+	local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+	for _, model in pairs(Workspace:GetDescendants()) do
+		if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") and model ~= LocalPlayer.Character then
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			local head = model:FindFirstChild("Head")
+			if humanoid and head and humanoid.Health > 0 then
+				local player = Players:GetPlayerFromCharacter(model)
+				if not player or player.Team ~= LocalPlayer.Team then
+					local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+					if onScreen then
+						local angle = math.deg(math.acos(Camera.CFrame.LookVector:Dot((head.Position - Camera.CFrame.Position).Unit)))
+						if angle <= aimbotFOV and isVisible(model) then
+							closestAngle = angle
+							closestTarget = head
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return closestTarget
+end
+
+-- Функция для обновления ESP (подсветка + имена)
+local function updateESP()
+	if not espEnabled then
+		for _, label in pairs(espLabels) do
+			label:Destroy()
+		end
+		espLabels = {}
+		clearESP()
+		return
+	end
+
+	for _, label in pairs(espLabels) do
+		label:Destroy()
+	end
+	espLabels = {}
+
+	for _, model in pairs(Workspace:GetDescendants()) do
+		if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") and model ~= LocalPlayer.Character then
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			local head = model:FindFirstChild("Head")
+			if humanoid and head and humanoid.Health > 0 then
+				local highlight = model:FindFirstChild("Highlight")
+				if not highlight then
+					highlight = Instance.new("Highlight")
+					highlight.Name = "Highlight"
+					highlight.Parent = model
+				end
+				local player = Players:GetPlayerFromCharacter(model)
+				if player and player.Team then
+					highlight.FillColor = player.TeamColor.Color
+					highlight.OutlineColor = player.TeamColor.Color
+				else
+					highlight.FillColor = defaultESPFillColor
+					highlight.OutlineColor = defaultESPOutlineColor
+				end
+
+				local name = player and player.Name or model.Name
+				local textColor = player and player.Team and player.TeamColor.Color or defaultESPTextColor
+				local billboard = Instance.new("BillboardGui")
+				billboard.Name = "ESPName"
+				billboard.Adornee = head
+				billboard.Size = UDim2.new(0, 100, 0, 20)
+				billboard.StudsOffset = Vector3.new(0, 2, 0)
+				billboard.AlwaysOnTop = true
+				billboard.Parent = screenGui
+				local textLabel = Instance.new("TextLabel")
+				textLabel.Size = UDim2.new(1, 0, 1, 0)
+				textLabel.BackgroundTransparency = 1
+				textLabel.Text = name
+				textLabel.TextColor3 = textColor
+				textLabel.TextScaled = true
+				textLabel.Font = Enum.Font.GothamBold
+				textLabel.Parent = billboard
+				table.insert(espLabels, billboard)
+			end
+		end
+	end
+end
+
+-- Функция для очистки ESP
+local function clearESP()
+	for _, model in pairs(Workspace:GetDescendants()) do
+		if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") then
+			local highlight = model:FindFirstChild("Highlight")
+			if highlight then
+				highlight:Destroy()
+			end
+		end
+	end
+	for _, label in pairs(espLabels) do
+		label:Destroy()
+	end
+	espLabels = {}
+end
+
+-- Функция для обновления размера квадрата FOV
+local function updateFOVSquare()
+	if aimbotEnabled and not menuEnabled then
+		local fovRadius = math.tan(math.rad(aimbotFOV / 2)) * Camera.ViewportSize.Y / 2
+		aimbotFOVSquare.Size = UDim2.new(0, fovRadius * 2, 0, fovRadius * 2)
+		aimbotFOVSquare.Position = UDim2.new(0.5, -fovRadius, 0.5, -fovRadius)
+		aimbotFOVSquare.Visible = true
+	else
+		aimbotFOVSquare.Visible = false
+	end
+end
+
+-- Функция для переключения ESP
+local function toggleESP()
+	espEnabled = not espEnabled
+	frame:FindFirstChild("ESPButton").Text = espEnabled and "ESP: Вкл (E)" or "ESP: Выкл (E)"
+	if espEnabled then
+		sendChatMessage("ESP включен", Color3.fromRGB(0, 255, 0))
+	else
+		sendChatMessage("ESP выключен", Color3.fromRGB(255, 0, 0))
+	end
+end
+
+-- Функция для переключения Bhop
+local function toggleBhop()
+	bhopEnabled = not bhopEnabled
+	if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+		local humanoid = LocalPlayer.Character.Humanoid
+		humanoid.WalkSpeed = bhopEnabled and bhopWalkSpeed or defaultWalkSpeed
+		humanoid.JumpHeight = bhopEnabled and bhopJumpHeight or defaultJumpHeight
+		humanoid.JumpPower = bhopEnabled and (bhopJumpHeight * 10) or (defaultJumpHeight * 10)
+	end
+	frame:FindFirstChild("BhopButton").Text = bhopEnabled and "Bhop: Вкл (B)" or "Bhop: Выкл (B)"
+	if bhopEnabled then
+		sendChatMessage("Bhop включен", Color3.fromRGB(0, 255, 0))
+	else
+		sendChatMessage("Bhop выключен", Color3.fromRGB(255, 0, 0))
+	end
+end
+
+-- Функция для переключения Aimbot
+local function toggleAimbot()
+	aimbotEnabled = not aimbotEnabled
+	frame:FindFirstChild("AimbotButton").Text = aimbotEnabled and "Aimbot: Вкл (V)" or "Aimbot: Выкл (V)"
+	if aimbotEnabled then
+		sendChatMessage("Aimbot включен", Color3.fromRGB(0, 255, 0))
+	else
+		sendChatMessage("Aimbot выключен", Color3.fromRGB(255, 0, 0))
+	end
+end
+
+-- Создаем кнопки
+local espButton = createButton("ESPButton", UDim2.new(0, 10, 0, 60), "ESP: Вкл (E)", toggleESP)
+local bhopButton = createButton("BhopButton", UDim2.new(0, 10, 0, 120), "Bhop: Выкл (B)", toggleBhop)
+local aimbotButton = createButton("AimbotButton", UDim2.new(0, 10, 0, 180), "Aimbot: Выкл (V)", toggleAimbot)
+
+-- Создаем ползунок для FOV
+local fovLabel = Instance.new("TextLabel")
+fovLabel.Size = UDim2.new(0, 260, 0, 30)
+fovLabel.Position = UDim2.new(0, 10, 0, 240)
+fovLabel.BackgroundTransparency = 1
+fovLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+fovLabel.Text = "FOV: 70"
+fovLabel.TextSize = 16
+fovLabel.Font = Enum.Font.Gotham
+fovLabel.TextXAlignment = Enum.TextXAlignment.Left
+fovLabel.Parent = frame
+
+local sliderFrame = Instance.new("Frame")
+sliderFrame.Size = UDim2.new(0, 260, 0, 8)
+sliderFrame.Position = UDim2.new(0, 10, 0, 280)
+sliderFrame.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+sliderFrame.BorderSizePixel = 0
+local sliderUICorner = Instance.new("UICorner")
+sliderUICorner.CornerRadius = UDim.new(0, 4)
+sliderUICorner.Parent = sliderFrame
+sliderFrame.Parent = frame
+
+local sliderKnob = Instance.new("Frame")
+sliderKnob.Size = UDim2.new(0, 16, 0, 16)
+sliderKnob.Position = UDim2.new(0, -8, -0.5, -4)
+sliderKnob.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+sliderKnob.BorderSizePixel = 0
+local knobUICorner = Instance.new("UICorner")
+knobUICorner.CornerRadius = UDim.new(0, 8)
+knobUICorner.Parent = sliderKnob
+local knobShadow = Instance.new("UIStroke")
+knobShadow.Thickness = 1
+knobShadow.Color = Color3.fromRGB(0, 0, 0)
+knobShadow.Transparency = 0.3
+knobShadow.Parent = sliderKnob
+sliderKnob.Parent = sliderFrame
+
+-- Логика перетаскивания ползунка
+sliderKnob.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		isDraggingSlider = true
+	end
+end)
+
+sliderKnob.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		isDraggingSlider = false
+	end
+end)
+
+-- Логика перетаскивания фрейма меню
+frame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 and input.Position.Y < frame.AbsolutePosition.Y + 50 then
+		isDraggingFrame = true
+		lastMousePos = input.Position
+	end
+end)
+
+frame.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		isDraggingFrame = false
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		if isDraggingSlider then
+			local mouseX = input.Position.X
+			local sliderX = sliderFrame.AbsolutePosition.X
+			local sliderWidth = sliderFrame.AbsoluteSize.X
+			local knobWidth = sliderKnob.AbsoluteSize.X
+			local newX = math.clamp((mouseX - sliderX) / sliderWidth, 0, 1)
+			sliderKnob.Position = UDim2.new(newX, -knobWidth / 2, -0.5, -4)
+			local fov = minFOV + (maxFOV - minFOV) * newX
+			Camera.FieldOfView = math.floor(fov)
+			fovLabel.Text = "FOV: " .. math.floor(fov)
+			updateFOVSquare()
+		elseif isDraggingFrame then
+			local delta = input.Position - lastMousePos
+			local newPos = frame.Position + UDim2.new(0, delta.X, 0, delta.Y)
+			frame.Position = newPos
+			lastMousePos = input.Position
+		end
+	end
+end)
+
+-- Обработка биндов клавиш
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+	if not gameProcessedEvent and not UserInputService:GetFocusedTextBox() then
+		if input.KeyCode == Enum.KeyCode.RightShift then
+			menuEnabled = not menuEnabled
+			frame.Visible = menuEnabled
+			if menuEnabled then
+				mouseBehaviorHistory = UserInputService.MouseBehavior
+				modalButton.Visible = true
+			else
+				modalButton.Visible = false
+				UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+			end
+		elseif input.KeyCode == Enum.KeyCode[espKey] then
+			toggleESP()
+		elseif input.KeyCode == Enum.KeyCode[bhopKey] then
+			toggleBhop()
+		elseif input.KeyCode == Enum.KeyCode[aimbotKey] then
+			toggleAimbot()
+		end
+	end
+end)
+
+-- Логика Bhop, ESP и Aimbot
+RunService.Heartbeat:Connect(function(deltaTime)
+	if espEnabled then
+		updateESP()
+	end
+	if bhopEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+		local humanoid = LocalPlayer.Character.Humanoid
+		if humanoid.FloorMaterial ~= Enum.Material.Air and humanoid.MoveDirection.Magnitude > 0 and tick() - lastJumpTime >= jumpCooldown then
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+			lastJumpTime = tick()
+		end
+	end
+end)
+
+RunService.RenderStepped:Connect(function(deltaTime)
+	if aimbotEnabled and LocalPlayer.Character and not menuEnabled then
+		local target = getClosestTarget()
+		if target then
+			Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Position)
+		end
+	end
+	updateFOVSquare()
+	if espEnabled then
+		updateESP()
+	end
+end)
+
+-- Обновление ESP при появлении новых объектов
+Workspace.DescendantAdded:Connect(function(descendant)
+	if espEnabled and descendant:IsA("Model") and descendant:FindFirstChildOfClass("Humanoid") then
+		if descendant ~= LocalPlayer.Character then
+			local highlight = Instance.new("Highlight")
+			highlight.Name = "Highlight"
+			local player = Players:GetPlayerFromCharacter(descendant)
+			if player and player.Team then
+				highlight.FillColor = player.TeamColor.Color
+				highlight.OutlineColor = player.TeamColor.Color
+			else
+				highlight.FillColor = defaultESPFillColor
+				highlight.OutlineColor = defaultESPOutlineColor
+			end
+			highlight.Parent = descendant
+
+			local head = descendant:FindFirstChild("Head")
+			if head then
+				local name = player and player.Name or descendant.Name
+				local textColor = player and player.Team and player.TeamColor.Color or defaultESPTextColor
+				local billboard = Instance.new("BillboardGui")
+				billboard.Name = "ESPName"
+				billboard.Adornee = head
+				billboard.Size = UDim2.new(0, 100, 0, 20)
+				billboard.StudsOffset = Vector3.new(0, 2, 0)
+				billboard.AlwaysOnTop = true
+				billboard.Parent = screenGui
+				local textLabel = Instance.new("TextLabel")
+				textLabel.Size = UDim2.new(1, 0, 1, 0)
+				textLabel.BackgroundTransparency = 1
+				textLabel.Text = name
+				textLabel.TextColor3 = textColor
+				textLabel.TextScaled = true
+				textLabel.Font = Enum.Font.GothamBold
+				textLabel.Parent = billboard
+				table.insert(espLabels, billboard)
+			end
+		end
+	end
+end)
+
+-- Сбрасываем Bhop при смерти персонажа
+LocalPlayer.CharacterAdded:Connect(function(character)
+	if bhopEnabled and character:FindFirstChildOfClass("Humanoid") then
+		local humanoid = character.Humanoid
+		humanoid.WalkSpeed = bhopWalkSpeed
+		humanoid.JumpHeight = bhopJumpHeight
+		humanoid.JumpPower = bhopJumpHeight * 10
+	end
+end)
+
+-- Инициализация ESP при запуске
+updateESP()
+sendChatMessage("ESP включен по умолчанию", Color3.fromRGB(0, 255, 0))
