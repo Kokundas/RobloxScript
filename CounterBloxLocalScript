@@ -37,6 +37,8 @@ aimbotFOVSquare.Parent = screenGui
 
 -- Хранилище меток для ESP
 local espLabels = {}
+local espUpdateInterval = 0.5 -- Задержка обновления ESP (в секундах)
+local lastESPUpdate = 0
 
 -- Создаем фрейм для меню
 local frame = Instance.new("Frame")
@@ -117,7 +119,7 @@ local defaultESPFillColor = Color3.fromRGB(255, 255, 255)
 local defaultESPOutlineColor = Color3.fromRGB(150, 150, 150)
 local defaultESPTextColor = Color3.fromRGB(150, 150, 150)
 local espKey = "X"
-local bhopKey = "U"
+local bhopKey = "I"
 local aimbotKey = "V"
 local menuEnabled = false
 local mouseBehaviorHistory = UserInputService.MouseBehavior
@@ -127,12 +129,14 @@ local lastMousePos = nil
 
 -- Функция для отправки локального сообщения в чат
 local function sendChatMessage(text, color)
-	StarterGui:SetCore("ChatMakeSystemMessage", {
-		Text = text,
-		Color = color,
-		Font = Enum.Font.GothamBold,
-		FontSize = Enum.FontSize.Size24
-	})
+	task.spawn(function()
+		StarterGui:SetCore("ChatMakeSystemMessage", {
+			Text = text,
+			Color = color,
+			Font = Enum.Font.GothamBold,
+			FontSize = Enum.FontSize.Size24
+		})
+	end)
 end
 
 -- Функция для проверки видимости цели через стены
@@ -154,20 +158,17 @@ local function getClosestTarget()
 	local closestAngle = aimbotFOV
 	local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
-	for _, model in pairs(Workspace:GetDescendants()) do
-		if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") and model ~= LocalPlayer.Character then
-			local humanoid = model:FindFirstChildOfClass("Humanoid")
-			local head = model:FindFirstChild("Head")
-			if humanoid and head and humanoid.Health > 0 then
-				local player = Players:GetPlayerFromCharacter(model)
-				if not player or player.Team ~= LocalPlayer.Team then
-					local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
-					if onScreen then
-						local angle = math.deg(math.acos(Camera.CFrame.LookVector:Dot((head.Position - Camera.CFrame.Position).Unit)))
-						if angle <= aimbotFOV and isVisible(model) then
-							closestAngle = angle
-							closestTarget = head
-						end
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+			local head = player.Character:FindFirstChild("Head")
+			if humanoid and head and humanoid.Health > 0 and (not player.Team or player.Team ~= LocalPlayer.Team) then
+				local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+				if onScreen then
+					local angle = math.deg(math.acos(Camera.CFrame.LookVector:Dot((head.Position - Camera.CFrame.Position).Unit)))
+					if angle <= aimbotFOV and isVisible(player.Character) then
+						closestAngle = angle
+						closestTarget = head
 					end
 				end
 			end
@@ -184,37 +185,27 @@ local function updateESP()
 			label:Destroy()
 		end
 		espLabels = {}
-		clearESP()
 		return
-	end
+	 end
 
+	-- Очистка старых меток
 	for _, label in pairs(espLabels) do
 		label:Destroy()
 	end
 	espLabels = {}
 
-	for _, model in pairs(Workspace:GetDescendants()) do
-		if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") and model ~= LocalPlayer.Character then
-			local humanoid = model:FindFirstChildOfClass("Humanoid")
-			local head = model:FindFirstChild("Head")
+	-- Обновление ESP только для игроков
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+			local head = player.Character:FindFirstChild("Head")
 			if humanoid and head and humanoid.Health > 0 then
-				local highlight = model:FindFirstChild("Highlight")
-				if not highlight then
-					highlight = Instance.new("Highlight")
-					highlight.Name = "Highlight"
-					highlight.Parent = model
-				end
-				local player = Players:GetPlayerFromCharacter(model)
-				if player and player.Team then
-					highlight.FillColor = player.TeamColor.Color
-					highlight.OutlineColor = player.TeamColor.Color
-				else
-					highlight.FillColor = defaultESPFillColor
-					highlight.OutlineColor = defaultESPOutlineColor
-				end
+				local highlight = player.Character:FindFirstChild("Highlight") or Instance.new("Highlight")
+				highlight.Name = "Highlight"
+				highlight.Parent = player.Character
+				highlight.FillColor = player.Team and player.TeamColor.Color or defaultESPFillColor
+				highlight.OutlineColor = player.Team and player.TeamColor.Color or defaultESPOutlineColor
 
-				local name = player and player.Name or model.Name
-				local textColor = player and player.Team and player.TeamColor.Color or defaultESPTextColor
 				local billboard = Instance.new("BillboardGui")
 				billboard.Name = "ESPName"
 				billboard.Adornee = head
@@ -225,8 +216,8 @@ local function updateESP()
 				local textLabel = Instance.new("TextLabel")
 				textLabel.Size = UDim2.new(1, 0, 1, 0)
 				textLabel.BackgroundTransparency = 1
-				textLabel.Text = name
-				textLabel.TextColor3 = textColor
+				textLabel.Text = player.Name
+				textLabel.TextColor3 = player.Team and player.TeamColor.Color or defaultESPTextColor
 				textLabel.TextScaled = true
 				textLabel.Font = Enum.Font.GothamBold
 				textLabel.Parent = billboard
@@ -238,18 +229,18 @@ end
 
 -- Функция для очистки ESP
 local function clearESP()
-	for _, model in pairs(Workspace:GetDescendants()) do
-		if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") then
-			local highlight = model:FindFirstChild("Highlight")
+	for _, label in pairs(espLabels) do
+		label:Destroy()
+	end
+	espLabels = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character then
+			local highlight = player.Character:FindFirstChild("Highlight")
 			if highlight then
 				highlight:Destroy()
 			end
 		end
 	end
-	for _, label in pairs(espLabels) do
-		label:Destroy()
-	end
-	espLabels = {}
 end
 
 -- Функция для обновления размера квадрата FOV
@@ -270,21 +261,23 @@ local function toggleESP()
 	frame:FindFirstChild("ESPButton").Text = espEnabled and "ESP: Вкл (X)" or "ESP: Выкл (X)"
 	if espEnabled then
 		sendChatMessage("ESP включен", Color3.fromRGB(0, 255, 0))
+		updateESP() -- Немедленное обновление при включении
 	else
 		sendChatMessage("ESP выключен", Color3.fromRGB(255, 0, 0))
+		clearESP()
 	end
 end
 
 -- Функция для переключения Bhop
 local function toggleBhop()
 	bhopEnabled = not bhopEnabled
-	if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-		local humanoid = LocalPlayer.Character.Humanoid
+	local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
 		humanoid.WalkSpeed = bhopEnabled and bhopWalkSpeed or defaultWalkSpeed
 		humanoid.JumpHeight = bhopEnabled and bhopJumpHeight or defaultJumpHeight
 		humanoid.JumpPower = bhopEnabled and (bhopJumpHeight * 10) or (defaultJumpHeight * 10)
 	end
-	frame:FindFirstChild("BhopButton").Text = bhopEnabled and "Bhop: Вкл (U)" or "Bhop: Выкл (U)"
+	frame:FindFirstChild("BhopButton").Text = bhopEnabled and "Bhop: Вкл (I)" or "Bhop: Выкл (I)"
 	if bhopEnabled then
 		sendChatMessage("Bhop включен", Color3.fromRGB(0, 255, 0))
 	else
@@ -305,7 +298,7 @@ end
 
 -- Создаем кнопки
 local espButton = createButton("ESPButton", UDim2.new(0, 10, 0, 60), "ESP: Вкл (X)", toggleESP)
-local bhopButton = createButton("BhopButton", UDim2.new(0, 10, 0, 120), "Bhop: Выкл (U)", toggleBhop)
+local bhopButton = createButton("BhopButton", UDim2.new(0, 10, 0, 120), "Bhop: Выкл (I)", toggleBhop)
 local aimbotButton = createButton("AimbotButton", UDim2.new(0, 10, 0, 180), "Aimbot: Выкл (V)", toggleAimbot)
 
 -- Создаем ползунок для FOV
@@ -419,13 +412,16 @@ end)
 
 -- Логика Bhop, ESP и Aimbot
 RunService.Heartbeat:Connect(function(deltaTime)
-	if espEnabled then
+	if espEnabled and tick() - lastESPUpdate >= espUpdateInterval then
 		updateESP()
+		lastESPUpdate = tick()
 	end
 	if bhopEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
 		local humanoid = LocalPlayer.Character.Humanoid
 		if humanoid.FloorMaterial ~= Enum.Material.Air and humanoid.MoveDirection.Magnitude > 0 and tick() - lastJumpTime >= jumpCooldown then
-			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+			task.spawn(function()
+				humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+			end)
 			lastJumpTime = tick()
 		end
 	end
@@ -439,25 +435,18 @@ RunService.RenderStepped:Connect(function(deltaTime)
 		end
 	end
 	updateFOVSquare()
-	if espEnabled then
-		updateESP()
-	end
 end)
 
 -- Обновление ESP при появлении новых объектов
 Workspace.DescendantAdded:Connect(function(descendant)
-	if espEnabled and descendant:IsA("Model") and descendant:FindFirstChildOfClass("Humanoid") then
-		if descendant ~= LocalPlayer.Character then
+	if espEnabled and descendant:IsA("Model") and descendant:FindFirstChildOfClass("Humanoid") and descendant ~= LocalPlayer.Character then
+		task.spawn(function()
+			task.wait(0.1) -- Задержка для предотвращения перегрузки
 			local highlight = Instance.new("Highlight")
 			highlight.Name = "Highlight"
 			local player = Players:GetPlayerFromCharacter(descendant)
-			if player and player.Team then
-				highlight.FillColor = player.TeamColor.Color
-				highlight.OutlineColor = player.TeamColor.Color
-			else
-				highlight.FillColor = defaultESPFillColor
-				highlight.OutlineColor = defaultESPOutlineColor
-			end
+			highlight.FillColor = player and player.Team and player.TeamColor.Color or defaultESPFillColor
+			highlight.OutlineColor = player and player.Team and player.TeamColor.Color or defaultESPOutlineColor
 			highlight.Parent = descendant
 
 			local head = descendant:FindFirstChild("Head")
@@ -481,20 +470,27 @@ Workspace.DescendantAdded:Connect(function(descendant)
 				textLabel.Parent = billboard
 				table.insert(espLabels, billboard)
 			end
-		end
+		end)
 	end
 end)
 
 -- Сбрасываем Bhop при смерти персонажа
 LocalPlayer.CharacterAdded:Connect(function(character)
-	if bhopEnabled and character:FindFirstChildOfClass("Humanoid") then
-		local humanoid = character.Humanoid
-		humanoid.WalkSpeed = bhopWalkSpeed
-		humanoid.JumpHeight = bhopJumpHeight
-		humanoid.JumpPower = bhopJumpHeight * 10
+	if bhopEnabled then
+		task.spawn(function()
+			task.wait(0.1) -- Задержка для стабильности
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.WalkSpeed = bhopWalkSpeed
+				humanoid.JumpHeight = bhopJumpHeight
+				humanoid.JumpPower = bhopJumpHeight * 10
+			end
+		end)
 	end
 end)
 
 -- Инициализация ESP при запуске
-updateESP()
-sendChatMessage("ESP включен по умолчанию", Color3.fromRGB(0, 255, 0))
+task.spawn(function()
+	updateESP()
+	sendChatMessage("ESP включен по умолчанию", Color3.fromRGB(0, 255, 0))
+end)
