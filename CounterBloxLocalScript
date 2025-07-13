@@ -60,7 +60,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, -20, 0, 40)
 titleLabel.Position = UDim2.new(0, 10, 0, 10)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Game Menu"
+titleLabel.Text = "Counter Blox"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 24
 titleLabel.Font = Enum.Font.GothamBold
@@ -116,8 +116,8 @@ local aimbotFOV = 15
 local defaultESPFillColor = Color3.fromRGB(255, 255, 255)
 local defaultESPOutlineColor = Color3.fromRGB(150, 150, 150)
 local defaultESPTextColor = Color3.fromRGB(150, 150, 150)
-local espKey = "E"
-local bhopKey = "B"
+local espKey = "X"
+local bhopKey = "U"
 local aimbotKey = "V"
 local menuEnabled = false
 local mouseBehaviorHistory = UserInputService.MouseBehavior
@@ -267,7 +267,7 @@ end
 -- Функция для переключения ESP
 local function toggleESP()
 	espEnabled = not espEnabled
-	frame:FindFirstChild("ESPButton").Text = espEnabled and "ESP: Вкл (E)" or "ESP: Выкл (E)"
+	frame:FindFirstChild("ESPButton").Text = espEnabled and "ESP: Вкл (X)" or "ESP: Выкл (X)"
 	if espEnabled then
 		sendChatMessage("ESP включен", Color3.fromRGB(0, 255, 0))
 	else
@@ -284,7 +284,7 @@ local function toggleBhop()
 		humanoid.JumpHeight = bhopEnabled and bhopJumpHeight or defaultJumpHeight
 		humanoid.JumpPower = bhopEnabled and (bhopJumpHeight * 10) or (defaultJumpHeight * 10)
 	end
-	frame:FindFirstChild("BhopButton").Text = bhopEnabled and "Bhop: Вкл (B)" or "Bhop: Выкл (B)"
+	frame:FindFirstChild("BhopButton").Text = bhopEnabled and "Bhop: Вкл (U)" or "Bhop: Выкл (U)"
 	if bhopEnabled then
 		sendChatMessage("Bhop включен", Color3.fromRGB(0, 255, 0))
 	else
