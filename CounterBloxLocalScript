@@ -304,8 +304,8 @@ local function toggleAimbot()
 end
 
 -- Создаем кнопки
-local espButton = createButton("ESPButton", UDim2.new(0, 10, 0, 60), "ESP: Вкл (E)", toggleESP)
-local bhopButton = createButton("BhopButton", UDim2.new(0, 10, 0, 120), "Bhop: Выкл (B)", toggleBhop)
+local espButton = createButton("ESPButton", UDim2.new(0, 10, 0, 60), "ESP: Вкл (X)", toggleESP)
+local bhopButton = createButton("BhopButton", UDim2.new(0, 10, 0, 120), "Bhop: Выкл (U)", toggleBhop)
 local aimbotButton = createButton("AimbotButton", UDim2.new(0, 10, 0, 180), "Aimbot: Выкл (V)", toggleAimbot)
 
 -- Создаем ползунок для FOV
